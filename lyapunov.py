@@ -6,61 +6,60 @@ import random
 from solvers import *
 
 
-def modify_init_conditions(init_conditions, threshold=0.01):
+def modify_init_conditions(init_conditions, threshold=1e-6):
+    """
+    Add a tiny random displacement to each object's position & velocity.
+    """
     for obj in init_conditions:
-        obj.position *= np.random.uniform(-threshold, threshold, 3) * [
-            random.choice([-1, 1]) for _ in range(3)
-        ]
-        obj.velocity *= np.random.uniform(-threshold, threshold, 3) * [
-            random.choice([-1, 1]) for _ in range(3)
-        ]
-
+        dp = np.random.uniform(-threshold, threshold, size=3)
+        dv = np.random.uniform(-threshold, threshold, size=3)
+        obj.position = obj.position + dp
+        obj.velocity = obj.velocity + dv
     return init_conditions
 
 
 class LyapunovCalculator:
     """
-    Calculates the (largest) Lyapunov exponent for two nearly identical orbits.
+    Computes the largest Lyapunov exponent by linear-fitting
+    log(separation) vs time.
     """
 
     def __init__(self, system1: System, system2: System) -> None:
-        # Each orbit is a list of Mass objects.
         assert (
             system1.solved and system2.solved
-        ), "must solve the system before using LyapunovCalculator"
-        assert system1.h == system2.h
-        assert system1.num_steps == system2.num_steps
-        self.system1 = system1
-        self.system2 = system2
+        ), "Both systems must be solved (i.e. integrated) first."
+        assert system1.h == system2.h, "Step sizes must match"
+        assert system1.num_steps == system2.num_steps, "Number of steps must match"
+        self.sys1 = system1
+        self.sys2 = system2
+        self.h = system1.h
+        self.num_steps = system1.num_steps
 
     def compute_separation(self) -> np.ndarray:
-        separations = np.array(
-            [
-                np.linalg.norm(
-                    np.array(self.system1.positions[m1])
-                    - np.array(self.system2.positions[m2]),
-                    axis=1,
-                )
-                for m1, m2 in zip(self.system1.positions, self.system2.positions)
-            ]
-        )
-        return np.mean(separations, axis=0)
-
-    def calculate_lyapunov_exponent(
-        self,
-    ) -> float:
         """
-        Evolves both orbits for a given number of steps.
-        At each step, it measures the separation and adds the logarithm
-        of the ratio (current separation / initial separation).
+        Returns an array delta of length num_steps+1,
+        where delta[i] is the mean distance between the two
+        systems' mass configurations at step i.
         """
-        # Record the initial separation
-        all_seps = self.compute_separation()
-        initial_sep = all_seps[0]
-        assert initial_sep != 0, "must have initial separation"
+        # assume system.positions is dict or list: mass_id -> array shape (num_steps+1,3)
+        # stack over masses then take mean over masses
+        all_dists = []
+        for m in self.sys1.positions:
+            pos1 = np.asarray(self.sys1.positions[m])  # shape (N+1,3)
+            pos2 = np.asarray(self.sys2.positions[m])
+            d = np.linalg.norm(pos1 - pos2, axis=1)  # shape (N+1,)
+            all_dists.append(d)
+        # shape (num_masses, N+1) -> mean over masses
+        return np.mean(np.vstack(all_dists), axis=0)
 
-        # ln(|delta(t)|/|delta_0|)/t is the Lyapunov exponent
-
-        return np.mean(
-            np.log((all_seps / initial_sep)) / (self.system1.num_steps * self.system1.h)
-        )
+    def calculate_lyapunov_exponent(self) -> float:
+        delta = self.compute_separation()
+        delta0 = delta[0]
+        if delta0 <= 0:
+            raise ValueError("Initial separation must be > 0")
+        t = np.arange(len(delta)) * self.h
+        y = np.log(delta / delta0)
+        # np.polyfit returns [slope, intercept]
+        lyapunov, intercept = np.polyfit(t, y, 1)
+        print("rate of separation:", delta0 * np.e * (lyapunov * len(delta) * self.h))
+        return lyapunov

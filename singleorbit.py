@@ -12,7 +12,7 @@ if __name__ == "__main__":
     time = 1e4
 
     sim_solve = []
-    sim_steps = []
+    sim_step_sizes = []
 
     step_size = list(np.logspace(-2, 1, num=10, dtype=float))
     print(step_size)
@@ -38,12 +38,12 @@ if __name__ == "__main__":
         for so in solvers:
             for st in step_size:
                 sim_solve.append(deepcopy(so))
-                sim_steps.append(deepcopy(st))
+                sim_step_sizes.append(deepcopy(st))
         experiment = ExperimentManager(
             modify_init_conditions(masses, threshold=0.001),
             time,
             sim_solve,
-            h_values=sim_steps,
+            h_values=sim_step_sizes,
         )
         experiment.solve_all()
         experiment.export_experiment()

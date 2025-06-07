@@ -7,7 +7,7 @@ if __name__ == "__main__":
     rng = random.Random(seed)
     print("Seed was:", seed)
     time = 1e7
-    sim_steps = []
+    sim_step_sizes = []
     num_masses = 5
     central_masses = 3
 

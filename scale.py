@@ -69,10 +69,10 @@ class UnitConverter:
         """Display the scale factors."""
         if self.mass_sf is None or self.dist_sf is None or self.time_sf is None:
             return "Scale factors not computed yet."
-        vel_sf = self.dist_sf / self.time_sf  # Velocity scale in m/s
+        vel_sf = self.dist_sf / self.time_sf
         return f"""Mass: 1 arbitrary unit = {self.mass_sf:.3g} kg
 Distance: 1 arbitrary unit = {self.dist_sf:.3g} m
 Velocity: 1 arbitrary unit = {vel_sf:.3g} m/s
 Time: 1 arbitrary unit = {self.time_sf:.3g} s
 Gravitational constant G: 1 arbitrary unit
-Energy: 1 arbitrary unit = {((g * (self.mass_sf**2))) / self.dist_sf}"""
+Energy: 1 arbitrary unit = {((g * (self.mass_sf**2))) / self.dist_sf} J"""

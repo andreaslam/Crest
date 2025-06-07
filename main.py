@@ -4,9 +4,6 @@ from scale import UnitConverter
 from solvers import (
     ExperimentManager,
     EulerSolver,
-    VelocityVerletSolver,
-    RK4Solver,
-    animate_orbits_3d,
 )
 import numpy as np
 

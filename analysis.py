@@ -208,34 +208,44 @@ def lyapunov_vs_energy_loss(df):
     df["std_energy_loss"] = pd.to_numeric(df["std_energy_loss"], errors="coerce")
     df = df.dropna(subset=["lyapunov", "std_energy_loss"])
     df["log_std_energy_loss"] = np.log10(df["std_energy_loss"])
+    df["log_lyapunov"] = np.log10(df["lyapunov"])
 
-    plt.figure(figsize=(8, 6))
-    sns.regplot(
-        x=df["lyapunov"],
-        y=df["log_std_energy_loss"],
-        scatter_kws={"alpha": 0.5},
-        line_kws={"color": "red"},
-    )
+    # Separate plots for each solver type
+    plt.figure(figsize=(10, 8))
+    for solver in df["solver_type"].unique():
+        solver_data = df[df["solver_type"] == solver]
+        sns.regplot(
+            x=solver_data["log_lyapunov"],
+            y=solver_data["log_std_energy_loss"],
+            scatter_kws={"alpha": 0.5},
+            line_kws={"color": "red"},
+            label=solver,
+        )
+
     plt.xlabel("Lyapunov Exponent")
     plt.ylabel("Log(Standard Deviation of Energy Loss)")
-    plt.title("Log-Linear Effect of Lyapunov Exponent on Energy Loss")
+    plt.title("Log-Linear Effect of Lyapunov Exponent on Energy Loss by Solver Type")
+    plt.legend()
     plt.grid(alpha=0.3)
     plt.show()
     plt.close()
 
-    correlation, p_value = pearsonr(df["lyapunov"], df["log_std_energy_loss"])
-    print(
-        f"Pearson Correlation (log-transformed): {correlation:.4f}, p-value: {p_value:.4e}"
-    )
-    model = fit_regression(df, "lyapunov", "log_std_energy_loss")
-    print(model.summary())
+    # Calculate averages and correlations per solver type
+    for solver in df["solver_type"].unique():
+        solver_data = df[df["solver_type"] == solver]
+        correlation, p_value = pearsonr(
+            solver_data["lyapunov"], solver_data["log_std_energy_loss"]
+        )
+        print(
+            f"{solver} - Pearson Correlation (log-transformed): {correlation:.4f}, p-value: {p_value:.4e}"
+        )
 
 
 def main():
     df = load_and_preprocess_data("experiment_data/experiment.csv")
     create_box_plots(df)
-    regression_analysis_all(df)  # New combined regression
-    regression_analysis(df)  # Existing per-body regression
+    regression_analysis_all(df)
+    regression_analysis(df)
     computational_efficiency_analysis(df)
     compute_solver_scores(df)
     lyapunov_vs_energy_loss(df)

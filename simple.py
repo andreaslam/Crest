@@ -63,7 +63,9 @@ class EulerSolver:
 
 
 if __name__ == "__main__":
-    hs = np.logspace(-3, -1, 100, dtype=np.float64) # -9 for euler to break, -3 for rk4 to break
+    hs = np.logspace(
+        -3, -1, 100, dtype=np.float64
+    )  # -9 for euler to break, -3 for rk4 to break
     x = 0
     y = 0
     x_end = 100
@@ -80,8 +82,12 @@ if __name__ == "__main__":
 
         rk4.solve()
         euler.solve()
-        rk4_error = np.mean(np.abs(np.array(rk4.ys, dtype=np.float64) - y_model), dtype=np.float64)
-        euler_error = np.mean(np.abs(np.array(euler.ys, dtype=np.float64) - y_model), dtype=np.float64)
+        rk4_error = np.mean(
+            np.abs(np.array(rk4.ys, dtype=np.float64) - y_model), dtype=np.float64
+        )
+        euler_error = np.mean(
+            np.abs(np.array(euler.ys, dtype=np.float64) - y_model), dtype=np.float64
+        )
 
         errors_rk4.append(rk4_error)
         errors_euler.append(euler_error)
@@ -92,21 +98,21 @@ if __name__ == "__main__":
         ymin=min(errors_rk4 + errors_euler),
         ymax=max(errors_rk4 + errors_euler),
         color="red",
-        label="float64"
+        label="float64",
     )
     plt.vlines(
         0.5 * (3.16e-2 + 1.38e-3),
         ymin=min(errors_rk4 + errors_euler),
         ymax=max(errors_rk4 + errors_euler),
         color="green",
-        label="avg"
+        label="avg",
     )
     plt.vlines(
         1.38e-3,
         ymin=min(errors_rk4 + errors_euler),
         ymax=max(errors_rk4 + errors_euler),
         color="blue",
-        label="float32"
+        label="float32",
     )
 
     plt.scatter(hs, errors_euler, label="Euler")

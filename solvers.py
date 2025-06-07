@@ -357,6 +357,7 @@ class ExperimentManager:
             h_values = h_values * len(solvers)
         elif len(solvers) == 1 and len(h_values) > 1:
             solvers *= len(h_values)
+        self.solvers = solvers
         assert len(h_values) == len(solvers)
         assert len(init_conditions) >= 1
         self.h_values = h_values
@@ -387,7 +388,7 @@ class ExperimentManager:
             conv=self.conv,
         )
         self.modified = System(
-            modify_init_conditions(deepcopy((init_conditions)), threshold=0.01),
+            modify_init_conditions(deepcopy((init_conditions)), threshold=1e-6),
             measure_duration,
             VelocityVerletSolver,
             h=measure_h,
@@ -596,6 +597,30 @@ class ExperimentManager:
                 writer.writeheader()
         if not self.lyapunov:
             self.get_lyapunov()
+        # # check if systems are in breakdown region
+
+        # grouped_sys = [
+        #     [
+        #         system
+        #         for system in self.systems
+        #         if isinstance(system.solver, solver_type)
+        #     ]
+        #     for solver_type in set(self.solvers)
+        # ]
+
+        # energies_by_system = [
+        #     [np.std(system.total_energy) for system in solver_type]
+        #     for solver_type in grouped_sys
+        # ]
+
+        # keeps = []
+
+        # for j, es in enumerate(energies_by_system):
+        #     for i, (e, n) in enumerate(zip(es, es[1:])):
+        #         if e < n + abs(abs(np.log10(n)) - abs(np.log10(e))) * 0.001:
+        #             # keep this
+        #             keeps.append(grouped_sys[j][i])
+
         for system in self.systems:
             experiment_data = [
                 datetime.datetime.now(),
@@ -920,18 +945,18 @@ if __name__ == "__main__":
     step_size = [0.02 / conv.time_sf]
 
     sim_solve = []
-    sim_steps = []
+    sim_step_sizes = []
 
     for so in solvers:
         for st in step_size:
             sim_solve.append(so)
-            sim_steps.append(st)
+            sim_step_sizes.append(st)
 
     experiment = ExperimentManager(
         celestial_objects,
         150 / conv.time_sf,
         sim_solve,
-        h_values=sim_steps,
+        h_values=sim_step_sizes,
         conv=conv,
         scaled=True,
     )
