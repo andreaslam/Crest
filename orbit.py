@@ -4,6 +4,7 @@ from solvers import *
 import numpy as np
 from scale import UnitConverter
 
+
 def generate_orbital_velocity(relative_position, central_mass, eccentricity=0.0):
     """
     Generate a velocity vector for a bound orbit using the vis-viva equation.
@@ -134,7 +135,7 @@ if __name__ == "__main__":
     min_masses = 3
     max_num_masses = 20
     max_num_central_masses = 10
-    time = 1e8
+    time = 1e9
     step_size = list(np.logspace(4, 4.1, num=10, dtype=float))
     for num_masses in range(min_masses, max_num_masses + 1):
         for m in range(n_orbits_per_mass):
@@ -161,7 +162,7 @@ if __name__ == "__main__":
                         sim_solve,
                         h_values=sim_steps,
                         scaled=True,
-                        conv=conv
+                        conv=conv,
                     )
                     exp = experiment.get_lyapunov()
                     print("Lyapunov exponent:", exp)

@@ -193,3 +193,4 @@ target/
 
 experiment_data/
 experiment_graphs/
+.DS_Store

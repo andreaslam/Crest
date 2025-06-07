@@ -29,7 +29,6 @@ def load_and_preprocess_data(filepath):
     df = df[df["std_energy_loss"] != 0.0]
     df = df[df["step_size"] != 0.0]
 
-
     df["masses"] = df["masses"].apply(ast.literal_eval)
     df["num_objects"] = df["masses"].apply(len)
     df["solver_type"] = df["solver"].str.split("Solver").str[0]
