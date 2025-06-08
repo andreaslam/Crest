@@ -7,34 +7,24 @@ import seaborn as sns
 from scipy import stats
 from scipy.stats import pearsonr
 
-
-def create_box_plots(df):
-    """
-    Creates box plots for Step Size and Energy Loss.
-    """
-    # Box plot for Standard Deviation of Energy Loss
-    plt.figure(figsize=(10, 6))
-    sns.boxplot(x="solver_type", y="std_energy_loss", data=df)
-    plt.xlabel("Solver Type")
-    plt.ylabel("Standard Deviation of Energy Loss")
-    plt.title("Box Plot of Energy Loss by Solver Type")
-    plt.grid(True, alpha=0.3)
-    plt.show()
-    plt.close()
-
+from orbit import MACHINE_EPS
 
 def load_and_preprocess_data(filepath):
     df = pd.read_csv(filepath)
+    print(len(df))
 
     df = df[df["std_energy_loss"] != 0.0]
     df = df[df["step_size"] != 0.0]
-
     df["masses"] = df["masses"].apply(ast.literal_eval)
     df["num_objects"] = df["masses"].apply(len)
     df["solver_type"] = df["solver"].str.split("Solver").str[0]
     df["step_size"] = df["step_size"].astype(float)
     df["log_step_size"] = np.log10(df["step_size"])
+    df["std_energy_loss"] = df["std_energy_loss"].astype(float)
     df["log_std_energy_loss"] = np.log10(df["std_energy_loss"])
+    df = df[df["log_std_energy_loss"] > np.log10(MACHINE_EPS) + 1]
+    # df = df[df["lyapunov"] < 0.004]
+    print(len(df))
     df.drop(columns="notes", inplace=True, errors="ignore")
     df = remove_outliers(df, "log_std_energy_loss")
     return df
@@ -200,7 +190,6 @@ def compute_solver_scores(df):
     ) / df.groupby("solver")["std_energy_loss"].count()
     scores = scores.to_dict()
     scores = dict(sorted(scores.items(), key=lambda item: item[1]))
-    print(scores)
 
 
 def lyapunov_vs_energy_loss(df):
@@ -241,12 +230,83 @@ def lyapunov_vs_energy_loss(df):
         )
 
 
+def regression_analysis_individual(df):
+    # Initialize lists to store average gradients
+    avg_gradients = {"solver_type": [], "avg_gradient": []}
+
+    # Iterate over each solver type
+    for solver in df["solver_type"].unique():
+        solver_data = df[df["solver_type"] == solver]
+
+        # Initialize lists to store gradients for current solver type
+        gradients = []
+
+        # Iterate over each experiment ID
+        for experiment_id in solver_data["experiment_id"].unique():
+            experiment_data = solver_data[solver_data["experiment_id"] == experiment_id]
+
+            # Fit regression model
+            model = fit_regression(
+                experiment_data, "log_step_size", "log_std_energy_loss"
+            )
+
+            # Calculate gradient (coefficient of log_step_size)
+            gradient = model.params[1]
+            gradients.append(gradient)
+        # Calculate average gradient for current solver type
+        # avg_gradient = np.mean(gradients)
+        avg_gradient = np.median(gradients)
+        print(gradients)
+        avg_gradients["solver_type"].append(solver)
+        avg_gradients["avg_gradient"].append(avg_gradient)
+
+    # Convert to DataFrame
+    avg_gradients_df = pd.DataFrame(avg_gradients)
+    
+    remove_outliers(avg_gradients_df, "avg_gradient")
+
+    # Plotting average gradients
+    plt.figure(figsize=(10, 6))
+    print(avg_gradients_df)
+    sns.barplot(x="solver_type", y="avg_gradient", data=avg_gradients_df)
+    plt.xlabel("Solver Type")
+    plt.ylabel("Average Gradient of Log Energy Loss vs Log Step Size")
+    plt.title("Average Gradient of Regression Lines by Solver Type")
+    plt.grid(True, alpha=0.3)
+    plt.show()
+    plt.close()
+
+    # Plot KDE/Histogram of gradients per solver
+    plt.figure(figsize=(12, 6))
+    for solver in df["solver_type"].unique():
+        solver_data = df[df["solver_type"] == solver]
+
+        gradients = []
+        for experiment_id in solver_data["experiment_id"].unique():
+            experiment_data = solver_data[solver_data["experiment_id"] == experiment_id]
+            model = fit_regression(
+                experiment_data, "log_step_size", "log_std_energy_loss"
+            )
+            gradients.append(model.params[1])
+
+        sns.histplot(gradients, kde=True, bins=1000, alpha=0.3)
+
+    plt.xlabel("Gradient")
+    plt.ylabel("Density")
+    plt.title("Distribution of Regression Gradients by Solver Type")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+
+
 def main():
     df = load_and_preprocess_data("experiment_data/experiment.csv")
-    create_box_plots(df)
-    regression_analysis_all(df)
-    regression_analysis(df)
-    computational_efficiency_analysis(df)
+    # regression_analysis_all(df)
+    # regression_analysis(df)
+    regression_analysis_individual(df)
+    # computational_efficiency_analysis(df)
     compute_solver_scores(df)
     lyapunov_vs_energy_loss(df)
 

@@ -83,6 +83,7 @@ class System:
         ]
         self.idx_energy_exceeded = {t: None for t in self.energy_thresholds}
         self.solved = False
+        self.acc_energy = 0.0
 
     def solve(self):
         self.solver.solve()
@@ -133,6 +134,8 @@ class System:
             assert (
                 total_energy < 0
             )  # negative to ensure that system is gravitationally bound
+        else:
+            self.acc_energy += (abs((total_energy - self.total_energy[-1])) / abs(self.total_energy[-1]))
         self.total_energy.append(total_energy)
         for t in self.energy_thresholds:
             if (
@@ -571,6 +574,7 @@ class ExperimentManager:
 
     def export_experiment(self, overwrite=False):
         headings = [
+            "experiment_id",
             "date",
             "masses",
             "initial_velocities",
@@ -582,52 +586,65 @@ class ExperimentManager:
             "execution_duration",
             "energy_thresholds",
             "lyapunov",
+            "simulated_time",
             "notes",
         ]
         assert all(s.solved for s in self.systems)
         if not os.path.exists(folder_path := "experiment_data"):
             os.makedirs(folder_path)
         file_path = f"{folder_path}/experiment.csv"
+
         if overwrite:
             with open(file_path, "w") as f:
                 f.write("")
+
+        # Determine next experiment ID
+        next_experiment_id = 0
+        if os.path.exists(file_path) and os.path.getsize(file_path):
+            with open(file_path, newline="") as f:
+                reader = csv.DictReader(f)
+                ids = [
+                    int(row["experiment_id"])
+                    for row in reader
+                    if row.get("experiment_id")
+                ]
+                if ids:
+                    next_experiment_id = max(ids) + 1
+
+        # Write header if needed
         if not os.path.exists(file_path) or not os.path.getsize(file_path):
-            with open(file_path, "w") as f:
+            with open(file_path, "w", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=headings)
                 writer.writeheader()
+
         if not self.lyapunov:
             self.get_lyapunov()
-        # # check if systems are in breakdown region
-
-        # grouped_sys = [
-        #     [
-        #         system
-        #         for system in self.systems
-        #         if isinstance(system.solver, solver_type)
-        #     ]
-        #     for solver_type in set(self.solvers)
-        # ]
-
-        # energies_by_system = [
-        #     [np.std(system.total_energy) for system in solver_type]
-        #     for solver_type in grouped_sys
-        # ]
-
-        # keeps = []
-
-        # for j, es in enumerate(energies_by_system):
-        #     for i, (e, n) in enumerate(zip(es, es[1:])):
-        #         if e < n + abs(abs(np.log10(n)) - abs(np.log10(e))) * 0.001:
-        #             # keep this
-        #             keeps.append(grouped_sys[j][i])
 
         for system in self.systems:
             experiment_data = [
+                next_experiment_id,
                 datetime.datetime.now(),
-                [round(mass.mass, 3) for mass in system.objs],
-                [list(mass.velocity) for mass in self.init_conditions],
                 [
-                    [round(position) for position in list(mass.position)]
+                    float(
+                        mass.mass * system.conv.mass_sf
+                        if system.conv and system.scaled
+                        else mass.mass
+                    )
+                    for mass in system.objs
+                ],
+                [
+                    list(
+                        mass.velocity * (system.conv.dist_sf / system.conv.time_sf)
+                        if system.conv and system.scaled
+                        else mass.velocity
+                    )
+                    for mass in self.init_conditions
+                ],
+                [
+                    [
+                        float(position * system.conv.dist_sf if system.conv and system.scaled else position)
+                        for position in list(mass.position)
+                    ]
                     for mass in self.init_conditions
                 ],
                 system.solver,
@@ -637,10 +654,12 @@ class ExperimentManager:
                     if system.conv and system.scaled
                     else system.h
                 ),
-                np.std(system.total_energy),
+                # np.std(system.total_energy),
+                system.acc_energy,
                 system.solver.execution_duration,
                 system.idx_energy_exceeded,
                 self.lyapunov,
+                system.simulation_length * system.conv.time_sf if system.conv and system.scaled else system.num_steps,
                 self.experiment_note,
             ]
             with open(file_path, "a", newline="") as f:
