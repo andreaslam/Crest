@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import rebound
 import csv
 import datetime
 import os
@@ -135,7 +135,9 @@ class System:
                 total_energy < 0
             )  # negative to ensure that system is gravitationally bound
         else:
-            self.acc_energy += (abs((total_energy - self.total_energy[-1])) / abs(self.total_energy[-1]))
+            self.acc_energy += abs((total_energy - self.total_energy[-1])) / abs(
+                self.total_energy[-1]
+            )
         self.total_energy.append(total_energy)
         for t in self.energy_thresholds:
             if (
@@ -240,7 +242,7 @@ class Solver(ABC):
         pass
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.system.h})"
+        return f"{type(self).__name__}({self.system.h:.5g})"
 
 
 class EulerSolver(Solver):
@@ -339,11 +341,71 @@ class RK4Solver(Solver):
             self.system.velocities[i].append(np.copy(obj.velocity))
 
 
+class ReboundSolver(Solver):
+    """
+    A solver that uses the REBOUND library for high-precision N-body integration.
+    This class acts as a wrapper to make REBOUND compatible with the System and
+    ExperimentManager framework.
+    """
+
+    def __init__(self, system: System):
+        super().__init__(system)
+        self.sim = rebound.Simulation()
+        self.sim.integrator = "ias15"  # A high-accuracy adaptive integrator
+        self.sim.dt = self.system.h
+        if self.system.scaled:
+            self.sim.G = 1
+        else:
+            self.sim.G = G
+
+        for obj in self.system.objs:
+            self.sim.add(
+                m=obj.mass,
+                x=obj.position[0],
+                y=obj.position[1],
+                z=obj.position[2],
+                vx=obj.velocity[0],
+                vy=obj.velocity[1],
+                vz=obj.velocity[2],
+            )
+        self.sim.move_to_com()
+
+    def solve(self):
+        """
+        Overrides the base solve method to use REBOUND's integration logic.
+        """
+        start_time = time.time()
+        self.system.calculate_total_energy()  # Initial energy
+
+        times = np.linspace(
+            self.sim.t, self.system.simulation_length, self.system.num_steps
+        )
+
+        for i, t in enumerate(tqdm.tqdm(times[1:], desc=self.progress_bar_description)):
+            self.sim.integrate(t)
+            for j, p in enumerate(self.sim.particles):
+                self.system.positions[j].append(np.array([p.x, p.y, p.z]))
+                self.system.velocities[j].append(np.array([p.vx, p.vy, p.vz]))
+
+            if (i + 1) % self.system.energy_check_interval == 0:
+                # Use REBOUND's optimized energy calculation
+                energy = self.sim.energy()
+                if self.system.conv and self.system.scaled:
+                    energy = self.system.conv.convert_energy_to_joules(energy)
+                self.system.total_energy.append(energy)
+
+        self.execution_duration = time.time() - start_time
+
+    def solve_step(self):
+        """Not used by this solver, as solve() is overridden."""
+        pass
+
+
 class ExperimentManager:
     def __init__(
         self,
         init_conditions: list[Mass],
-        simulation_length: int,
+        simulation_length: float,
         solvers: list[Solver],
         h_values: list[float] | float,
         experiment_note: str = "",
@@ -379,13 +441,13 @@ class ExperimentManager:
         self.experiment_note = experiment_note
         self.num_steps = [system.num_steps for system in self.systems]
         self.separation = {}
-        measure_duration = 1000
-        measure_h = 0.1
+        measure_duration = 100000
+        measure_h = 1000
         self.conv = conv
         self.baseline = System(
             deepcopy(init_conditions),
             measure_duration,
-            VelocityVerletSolver,
+            ReboundSolver,
             h=measure_h,
             scaled=self.scaled,
             conv=self.conv,
@@ -393,7 +455,7 @@ class ExperimentManager:
         self.modified = System(
             modify_init_conditions(deepcopy((init_conditions)), threshold=1e-6),
             measure_duration,
-            VelocityVerletSolver,
+            ReboundSolver,
             h=measure_h,
             scaled=self.scaled,
             conv=self.conv,
@@ -566,7 +628,7 @@ class ExperimentManager:
         if save:
             os.makedirs("experiment_graphs", exist_ok=True)
             plt.savefig(
-                f"experiment_graphs/{Path(metric).stem}_{label.empty(' ', '_')}.png"
+                f"experiment_graphs/{Path(metric).stem}_{label.replace(' ', '_')}.png"
             )
         if show:
             plt.show()
@@ -586,7 +648,7 @@ class ExperimentManager:
             "execution_duration",
             "energy_thresholds",
             "lyapunov",
-            "simulated_time",
+            "simulated_time_conv_scaled",
             "notes",
         ]
         assert all(s.solved for s in self.systems)
@@ -624,27 +686,10 @@ class ExperimentManager:
             experiment_data = [
                 next_experiment_id,
                 datetime.datetime.now(),
+                [float(mass.mass) for mass in system.objs],
+                [list(mass.velocity) for mass in self.init_conditions],
                 [
-                    float(
-                        mass.mass * system.conv.mass_sf
-                        if system.conv and system.scaled
-                        else mass.mass
-                    )
-                    for mass in system.objs
-                ],
-                [
-                    list(
-                        mass.velocity * (system.conv.dist_sf / system.conv.time_sf)
-                        if system.conv and system.scaled
-                        else mass.velocity
-                    )
-                    for mass in self.init_conditions
-                ],
-                [
-                    [
-                        float(position * system.conv.dist_sf if system.conv and system.scaled else position)
-                        for position in list(mass.position)
-                    ]
+                    [float(position) for position in list(mass.position)]
                     for mass in self.init_conditions
                 ],
                 system.solver,
@@ -659,7 +704,7 @@ class ExperimentManager:
                 system.solver.execution_duration,
                 system.idx_energy_exceeded,
                 self.lyapunov,
-                system.simulation_length * system.conv.time_sf if system.conv and system.scaled else system.num_steps,
+                system.simulation_length,
                 self.experiment_note,
             ]
             with open(file_path, "a", newline="") as f:
@@ -848,70 +893,6 @@ def animate_orbit_3d_video(
             f"{type(system.solver).__name__}_simulation.mp4",
             fps=((system.num_steps // frame_skips) / simulation_video_length_seconds),
         )
-
-
-# if __name__ == "__main__":
-
-#     from scale import UnitConverter
-#     from lyapunov import LyapunovCalculator, modify_init_conditions
-
-#     seed = random.randrange(sys.maxsize)
-#     rng = random.Random(seed)
-#     print("Seed was:", seed)
-#     # FIGURE OF 8
-#     celestial_objects = [
-#         Mass(
-#             mass=1,
-#             velocity=np.array([0.4662036850, 0.4323657300, 0.0]),
-#             position=np.array([0.97000436, -0.24308753, 0.0]),
-#         ),
-#         Mass(
-#             mass=1,
-#             velocity=np.array([0.4662036850, 0.4323657300, 0.0]),
-#             position=np.array([-0.97000436, 0.24308753, 0.0]),
-#         ),
-#         Mass(
-#             mass=1,
-#             velocity=np.array([-0.93240737, -0.8643146, 0.0]),
-#             position=np.array([0.0, 0.0, 0.0]),
-#         ),
-#     ]
-
-#     sim_time = 1e2
-#     conv = UnitConverter(celestial_objects)
-#     celestial_objects = conv.convert_initial_conditions()
-#     print(conv)
-#     sim_time /= conv.time_sf
-
-#     print(time)
-
-#     print(celestial_objects)
-
-#     solvers = [RK4Solver]
-#     # step_size = list(np.logspace(-8, -6, num=20, dtype=float))  # step_size = [0.01]
-#     step_size = [0.02]
-
-#     sim_solve = []
-#     sim_steps = []
-
-#     for so in solvers:
-#         for st in step_size:
-#             sim_solve.append(so)
-#             sim_steps.append(st)
-
-#     experiment = ExperimentManager(
-#         celestial_objects, sim_time, sim_solve, h_values=sim_steps, scaled=True
-#     )
-#     print(experiment.get_lyapunov())
-#     experiment.solve_all()
-#     experiment.plot_energy_conservation(save=True)
-#     experiment.plot_object_phase_space(save=True)
-#     experiment.calculate_trajectory_deviance("rmse", save=True)
-#     experiment.export_positions()
-#     animate_orbits_3d(experiment)
-
-#     # TODO make early stopping condition and record failure
-#     # acceleration-based early stopping
 
 
 if __name__ == "__main__":

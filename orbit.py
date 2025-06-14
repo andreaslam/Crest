@@ -44,11 +44,11 @@ def generate_orbital_velocity(
     a = r_norm / (1 - e)
 
     # Vis-viva equation to find the speed for a bound orbit
-    speed_sq = g* central_mass * (2 / r_norm - 1 / a)
+    speed_sq = g * central_mass * (2 / r_norm - 1 / a)
     if speed_sq < 0:
         # This can happen with extreme eccentricities, default to circular
         a = r_norm
-        speed_sq = g* central_mass * (2 / r_norm - 1 / a)
+        speed_sq = g * central_mass * (2 / r_norm - 1 / a)
 
     speed = np.sqrt(speed_sq)
 
@@ -98,7 +98,7 @@ def generate_random_orbits(n_masses, n_central_masses):
     for i in range(n_masses):
         is_central = i < n_central_masses
         mass_value = (
-            random.uniform(2e29, 3e29) if is_central else random.uniform(1e22, 5e24)
+            random.uniform(3e29, 4e29) if is_central else random.uniform(1e22, 5e24)
         )
 
         # Place central masses closer to the origin, orbiting bodies further out
@@ -122,7 +122,7 @@ def generate_random_orbits(n_masses, n_central_masses):
             relative_pos,
             central_body.mass,
             use_random_eccentricity=True,
-            random_eccentricity_range=(0.1, 0.6),
+            random_eccentricity_range=(0.0, 0.6),
         )
 
         # Set the absolute velocity (for now)
@@ -147,7 +147,7 @@ def generate_random_orbits(n_masses, n_central_masses):
         for j in range(i + 1, len(masses)):
             r_ij = np.linalg.norm(masses[i].position - masses[j].position)
             if r_ij > 0:
-                potential_energy -= (g* masses[i].mass * masses[j].mass) / r_ij
+                potential_energy -= (g * masses[i].mass * masses[j].mass) / r_ij
 
     total_energy = kinetic_energy + potential_energy
 
@@ -225,17 +225,15 @@ def generate_random_orbits(n_masses, n_central_masses):
 #                     sep="\n",
 #                 )
 
-MACHINE_EPS = (2**-52)
+MACHINE_EPS = 2**-52
 
 if __name__ == "__main__":
-    random.seed(42)
-    np.random.seed(42)
     n_orbits_per_mass = 10
     min_masses = 3
     max_num_masses = 20
     max_num_central_masses = 10
-    time = 1e7
-    breakdown_step_size = MACHINE_EPS ** 0.2
+    time = 60 * 60 * 24 * 365
+    breakdown_step_size = MACHINE_EPS**0.2
     for num_masses in range(min_masses, max_num_masses + 1):
         for m in range(n_orbits_per_mass):
             for central_mass in range(1, min(m, max_num_central_masses + 1)):

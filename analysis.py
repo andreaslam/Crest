@@ -9,6 +9,7 @@ from scipy.stats import pearsonr
 
 from orbit import MACHINE_EPS
 
+
 def load_and_preprocess_data(filepath):
     df = pd.read_csv(filepath)
     print(len(df))
@@ -262,7 +263,7 @@ def regression_analysis_individual(df):
 
     # Convert to DataFrame
     avg_gradients_df = pd.DataFrame(avg_gradients)
-    
+
     remove_outliers(avg_gradients_df, "avg_gradient")
 
     # Plotting average gradients
@@ -302,7 +303,7 @@ def regression_analysis_individual(df):
 
 
 def main():
-    df = load_and_preprocess_data("experiment_data/experiment.csv")
+    df = load_and_preprocess_data("experiment_data/experiment20masses_1e7.csv")
     # regression_analysis_all(df)
     # regression_analysis(df)
     regression_analysis_individual(df)
