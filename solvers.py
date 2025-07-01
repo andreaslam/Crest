@@ -65,22 +65,7 @@ class System:
         self.energy_check_interval = energy_check_interval
         self.total_energy = []
         self.conv = conv
-        self.energy_thresholds = [
-            0.01,
-            0.05,
-            0.1,
-            0.2,
-            0.3,
-            0.5,
-            1.0,
-            1.5,
-            2.0,
-            2.5,
-            3,
-            4,
-            5,
-            10,
-        ]
+        self.energy_thresholds = np.logspace(-20, -1, num=20, dtype=float)
         self.idx_energy_exceeded = {t: None for t in self.energy_thresholds}
         self.solved = False
         self.acc_energy = 0.0
@@ -141,8 +126,8 @@ class System:
         self.total_energy.append(total_energy)
         for t in self.energy_thresholds:
             if (
-                total_energy > self.total_energy[0] * (1 + t)
-                or total_energy < self.total_energy[0] * (1 - t)
+                total_energy < self.total_energy[0] * (1 + t)
+                or total_energy > self.total_energy[0] * (1 - t)
             ) and not self.idx_energy_exceeded[t]:
                 self.idx_energy_exceeded[t] = (
                     len(self.total_energy) - 1
@@ -222,18 +207,13 @@ class Solver(ABC):
 
     def solve(self):
         start = time.time()
-        init_energy = self.system.calculate_total_energy()
-        sys_energy = self.system.calculate_total_energy()
+        self.system.calculate_total_energy()
         for i in tqdm.tqdm(
             range(self.system.num_steps), desc=self.progress_bar_description
         ):
-            if i == 0:
-                init_energy = self.system.calculate_total_energy()
             self.solve_step()
-            if i % self.system.energy_check_interval == 0 and i != 0:
-                sys_energy = self.system.calculate_total_energy()
-            # if abs(init_energy * max(self.system.energy_thresholds)) < abs(sys_energy):
-            #     break
+            if (i + 1) % self.system.energy_check_interval == 0:
+                self.system.calculate_total_energy()
         end = time.time()
         self.execution_duration = end - start
 
@@ -351,12 +331,12 @@ class ReboundSolver(Solver):
     def __init__(self, system: System):
         super().__init__(system)
         self.sim = rebound.Simulation()
-        self.sim.integrator = "ias15"  # A high-accuracy adaptive integrator
+        self.sim.integrator = "ias15"
         self.sim.dt = self.system.h
         if self.system.scaled:
             self.sim.G = 1
         else:
-            self.sim.G = G
+            self.sim.G = g
 
         for obj in self.system.objs:
             self.sim.add(
@@ -441,8 +421,8 @@ class ExperimentManager:
         self.experiment_note = experiment_note
         self.num_steps = [system.num_steps for system in self.systems]
         self.separation = {}
-        measure_duration = 100000
-        measure_h = 1000
+        measure_duration = simulation_length
+        measure_h = 1000 / conv.time_sf
         self.conv = conv
         self.baseline = System(
             deepcopy(init_conditions),
@@ -453,7 +433,7 @@ class ExperimentManager:
             conv=self.conv,
         )
         self.modified = System(
-            modify_init_conditions(deepcopy((init_conditions)), threshold=1e-6),
+            modify_init_conditions(deepcopy((init_conditions)), threshold=1e-3),
             measure_duration,
             ReboundSolver,
             h=measure_h,
@@ -475,7 +455,7 @@ class ExperimentManager:
         self.baseline, self.modified = solved_systems
         calc = LyapunovCalculator(self.baseline, self.modified)
         self.lyapunov = calc.calculate_lyapunov_exponent()
-        return self.lyapunov
+        return self.lyapunov / self.conv.time_sf if self.conv else self.lyapunov
 
     def solve_all(self):
         solved_systems = []
@@ -576,39 +556,42 @@ class ExperimentManager:
             combinations(self.systems_trajectories, 2),
             combinations([sys.solver for sys in self.systems], 2),
         ):
-            traj1, traj2 = pair
-            len1 = len(next(iter(traj1.values()))) if traj1 else 0
-            len2 = len(next(iter(traj2.values()))) if traj2 else 0
-
-            if len1 > len2 > 0:
-                step = len1 // len2
-                for obj in traj1:
-                    traj1[obj] = traj1[obj][::step]
-            elif len2 > len1 > 0:
-                step = len2 // len1
-                for obj in traj2:
-                    traj2[obj] = traj2[obj][::step]
-
-            final_len1 = len(next(iter(traj1.values()))) if traj1 else 0
-            final_len2 = len(next(iter(traj2.values()))) if traj2 else 0
-
-            min_len = min(final_len1, final_len2)
-            if min_len > 0:
-                for obj in traj1:
-                    traj1[obj] = traj1[obj][:min_len]
-                for obj in traj2:
-                    traj2[obj] = traj2[obj][:min_len]
-
-            separation, step_separation = calculate_trajectory_deviance_pair(
-                (traj1, traj2), metric
+            separation, step_separation = self.calculate_trajectory_deviance_pair(
+                metric, pair
             )
 
             self.separation[system_pair] = separation
             all_trajectories[system_pair] = step_separation
-            if show:
-                self.plot_trajectory_deviance(
-                    all_trajectories, metric, system_pair, save
-                )
+            self.plot_trajectory_deviance(
+                all_trajectories, metric, system_pair, show, save
+            )
+
+    def calculate_trajectory_deviance_pair(self, metric, pair, metric_score_only=False):
+        traj1, traj2 = pair
+        len1 = len(next(iter(traj1.values()))) if traj1 else 0
+        len2 = len(next(iter(traj2.values()))) if traj2 else 0
+        if len1 > len2 > 0:
+            step = len1 // len2
+            for obj in traj1:
+                traj1[obj] = traj1[obj][::step]
+        elif len2 > len1 > 0:
+            step = len2 // len1
+            for obj in traj2:
+                traj2[obj] = traj2[obj][::step]
+        final_len1 = len(next(iter(traj1.values()))) if traj1 else 0
+        final_len2 = len(next(iter(traj2.values()))) if traj2 else 0
+
+        min_len = min(final_len1, final_len2)
+        if min_len > 0:
+            for obj in traj1:
+                traj1[obj] = traj1[obj][:min_len]
+            for obj in traj2:
+                traj2[obj] = traj2[obj][:min_len]
+
+        separation, step_separation = calculate_trajectory_deviance_pair(
+            (traj1, traj2), metric
+        )
+        return separation if metric_score_only else (separation, step_separation)
 
     def plot_trajectory_deviance(
         self, trajectories, metric, solver_pair, show=False, save=True
@@ -649,6 +632,7 @@ class ExperimentManager:
             "energy_thresholds",
             "lyapunov",
             "simulated_time_conv_scaled",
+            "mae_deviance",
             "notes",
         ]
         assert all(s.solved for s in self.systems)
@@ -682,6 +666,16 @@ class ExperimentManager:
         if not self.lyapunov:
             self.get_lyapunov()
 
+        reb_sim = System(
+            self.init_conditions,
+            self.simulation_length,
+            ReboundSolver,
+            1000.0 / self.conv.time_sf if self.conv else 1000.0,
+            1,
+            self.scaled,
+            self.conv,
+        )
+        reb_sim.solve()
         for system in self.systems:
             experiment_data = [
                 next_experiment_id,
@@ -699,12 +693,21 @@ class ExperimentManager:
                     if system.conv and system.scaled
                     else system.h
                 ),
-                # np.std(system.total_energy),
-                system.acc_energy,
+                abs(np.std(system.total_energy) / (system.total_energy[0])),
+                # system.acc_energy / system.total_energy[0],
                 system.solver.execution_duration,
                 system.idx_energy_exceeded,
                 self.lyapunov,
                 system.simulation_length,
+                (
+                    self.calculate_trajectory_deviance_pair(
+                        "mae",
+                        [reb_sim.positions, system.positions],
+                        metric_score_only=True,
+                    )
+                    * system.conv.dist_sf
+                )
+                / len(system.objs),
                 self.experiment_note,
             ]
             with open(file_path, "a", newline="") as f:
@@ -780,7 +783,7 @@ def animate_orbits_3d(manager: ExperimentManager):
         for i in range(num_solvers)
     ]
     lines_per_solver = [
-        [ax.plot([], [], [], label=f"Mass {obj.mass:e} kg")[0] for obj in system.objs]
+        [ax.plot([], [], [], label=f"Mass {obj.mass:.3g} kg")[0] for obj in system.objs]
         for ax, system in zip(axes, manager.systems)
     ]
     points_per_solver = [
@@ -838,61 +841,6 @@ def animate_orbits_3d(manager: ExperimentManager):
     )
     plt.show()
     plt.close()
-
-
-def animate_orbit_3d_video(
-    manager: ExperimentManager, simulation_video_length_seconds=30, frame_skips=500
-):
-    frame_skips = min(1, frame_skips)
-    for system in manager.systems:
-        fig = plt.figure(figsize=(6, 6))
-        ax = fig.add_subplot(111, projection="3d")
-
-        lines = [
-            ax.plot([], [], [], label=f"Mass {obj.mass} kg")[0] for obj in system.objs
-        ]
-        points = [ax.plot([], [], [], "o")[0] for _ in system.objs]
-
-        ax.set_title(f"{type(system.solver).__name__} Simulation")
-        ax.set_xlabel("X Position (m)")
-        ax.set_ylabel("Y Position (m)")
-        ax.set_zlabel("Z Position (m)")
-        ax.set_xlim([-25, 25])
-        ax.set_ylim([-25, 25])
-        ax.set_zlim([-25, 25])
-        ax.legend()
-
-        def init():
-            for line, point in zip(lines, points):
-                line.set_data([], [])
-                line.set_3d_properties([])
-                point.set_data([], [])
-                point.set_3d_properties([])
-            return lines + points
-
-        def update(frame):
-            for i, (obj, line, point) in enumerate(zip(system.objs, lines, points)):
-                positions = np.array(system.positions[i])
-                if frame < len(positions):
-                    line.set_data(positions[:frame, 0], positions[:frame, 1])
-                    line.set_3d_properties(positions[:frame, 2])
-                    point.set_data(positions[frame, 0], positions[frame, 1])
-                    point.set_3d_properties(positions[frame, 2])
-            return lines + points
-
-        max_frames = system.total_num_positions()
-        ani = FuncAnimation(
-            fig,
-            update,
-            frames=range(0, max_frames, frame_skips),
-            init_func=init,
-            interval=1,
-            blit=True,
-        )
-        ani.save(
-            f"{type(system.solver).__name__}_simulation.mp4",
-            fps=((system.num_steps // frame_skips) / simulation_video_length_seconds),
-        )
 
 
 if __name__ == "__main__":

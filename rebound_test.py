@@ -1,6 +1,7 @@
-from solvers import * 
+from solvers import *
 from scale import UnitConverter
 from orbit import generate_random_orbits
+
 MACHINE_EPS = 2**-52
 
 if __name__ == "__main__":

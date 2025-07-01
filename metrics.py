@@ -21,8 +21,9 @@ def calculate_trajectory_deviance_pair(trajectories, metric):
         raise ValueError(f"{metric} not supported! Only supports {supported_metrics}")
 
     t1, t2 = trajectories
+    # print("t1", t1)
+    # print("t2", t2)
     all_errors = []
-
     # Loop over each object; assumes both trajectories have the same keys.
     for obj_id in t1:
         traj1 = np.array(t1[obj_id])

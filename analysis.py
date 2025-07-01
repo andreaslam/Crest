@@ -23,11 +23,19 @@ def load_and_preprocess_data(filepath):
     df["log_step_size"] = np.log10(df["step_size"])
     df["std_energy_loss"] = df["std_energy_loss"].astype(float)
     df["log_std_energy_loss"] = np.log10(df["std_energy_loss"])
+
+    df["mae_deviance"] = df["mae_deviance"].astype(float)
+    df["log_mae_deviance"] = np.log10(df["mae_deviance"])
+
     df = df[df["log_std_energy_loss"] > np.log10(MACHINE_EPS) + 1]
+
+    df = df[df["log_mae_deviance"] > np.log10(MACHINE_EPS) + 1]
+
     # df = df[df["lyapunov"] < 0.004]
     print(len(df))
     df.drop(columns="notes", inplace=True, errors="ignore")
     df = remove_outliers(df, "log_std_energy_loss")
+    print(df["lyapunov"].describe())
     return df
 
 
@@ -192,46 +200,7 @@ def compute_solver_scores(df):
     scores = scores.to_dict()
     scores = dict(sorted(scores.items(), key=lambda item: item[1]))
 
-
-def lyapunov_vs_energy_loss(df):
-    df["lyapunov"] = pd.to_numeric(df["lyapunov"], errors="coerce")
-    df["std_energy_loss"] = pd.to_numeric(df["std_energy_loss"], errors="coerce")
-    df = df.dropna(subset=["lyapunov", "std_energy_loss"])
-    df["log_std_energy_loss"] = np.log10(df["std_energy_loss"])
-    df["log_lyapunov"] = np.log10(df["lyapunov"])
-
-    # Separate plots for each solver type
-    plt.figure(figsize=(10, 8))
-    for solver in df["solver_type"].unique():
-        solver_data = df[df["solver_type"] == solver]
-        sns.regplot(
-            x=solver_data["log_lyapunov"],
-            y=solver_data["log_std_energy_loss"],
-            scatter_kws={"alpha": 0.5},
-            line_kws={"color": "red"},
-            label=solver,
-        )
-
-    plt.xlabel("Lyapunov Exponent")
-    plt.ylabel("Log(Standard Deviation of Energy Loss)")
-    plt.title("Log-Linear Effect of Lyapunov Exponent on Energy Loss by Solver Type")
-    plt.legend()
-    plt.grid(alpha=0.3)
-    plt.show()
-    plt.close()
-
-    # Calculate averages and correlations per solver type
-    for solver in df["solver_type"].unique():
-        solver_data = df[df["solver_type"] == solver]
-        correlation, p_value = pearsonr(
-            solver_data["lyapunov"], solver_data["log_std_energy_loss"]
-        )
-        print(
-            f"{solver} - Pearson Correlation (log-transformed): {correlation:.4f}, p-value: {p_value:.4e}"
-        )
-
-
-def regression_analysis_individual(df):
+def regression_analysis_individual(df, metric):
     # Initialize lists to store average gradients
     avg_gradients = {"solver_type": [], "avg_gradient": []}
 
@@ -248,7 +217,7 @@ def regression_analysis_individual(df):
 
             # Fit regression model
             model = fit_regression(
-                experiment_data, "log_step_size", "log_std_energy_loss"
+                experiment_data, "log_step_size", metric
             )
 
             # Calculate gradient (coefficient of log_step_size)
@@ -271,7 +240,7 @@ def regression_analysis_individual(df):
     print(avg_gradients_df)
     sns.barplot(x="solver_type", y="avg_gradient", data=avg_gradients_df)
     plt.xlabel("Solver Type")
-    plt.ylabel("Average Gradient of Log Energy Loss vs Log Step Size")
+    plt.ylabel(f'Average Gradient of {" ".join([x.capitalize() for x in metric.replace("_", " ").split(" ")])} vs Log Step Size')
     plt.title("Average Gradient of Regression Lines by Solver Type")
     plt.grid(True, alpha=0.3)
     plt.show()
@@ -295,7 +264,6 @@ def regression_analysis_individual(df):
     plt.xlabel("Gradient")
     plt.ylabel("Density")
     plt.title("Distribution of Regression Gradients by Solver Type")
-    plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.show()
@@ -303,13 +271,10 @@ def regression_analysis_individual(df):
 
 
 def main():
-    df = load_and_preprocess_data("experiment_data/experiment20masses_1e7.csv")
-    # regression_analysis_all(df)
-    # regression_analysis(df)
-    regression_analysis_individual(df)
+    df = load_and_preprocess_data("experiment_data/experiment.csv")
+    regression_analysis_individual(df, "log_std_energy_loss")
     # computational_efficiency_analysis(df)
     compute_solver_scores(df)
-    lyapunov_vs_energy_loss(df)
 
 
 if __name__ == "__main__":
