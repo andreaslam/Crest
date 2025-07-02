@@ -433,7 +433,7 @@ class ExperimentManager:
             conv=self.conv,
         )
         self.modified = System(
-            modify_init_conditions(deepcopy((init_conditions)), threshold=1e-3),
+            modify_init_conditions(deepcopy((init_conditions)), threshold=1e-6),
             measure_duration,
             ReboundSolver,
             h=measure_h,
@@ -454,8 +454,8 @@ class ExperimentManager:
             solved_systems.append(system)
         self.baseline, self.modified = solved_systems
         calc = LyapunovCalculator(self.baseline, self.modified)
-        self.lyapunov = calc.calculate_lyapunov_exponent()
-        return self.lyapunov / self.conv.time_sf if self.conv else self.lyapunov
+        self.lyapunov = calc.calculate_lyapunov_exponent() / self.conv.time_sf
+        return self.lyapunov
 
     def solve_all(self):
         solved_systems = []
@@ -463,22 +463,22 @@ class ExperimentManager:
             futures = [executor.submit(solve_system, system) for system in self.systems]
             for future in as_completed(futures):
                 system = future.result()
-                print("std:", np.std(system.total_energy))
-                print(
-                    "average abs energy difference since initial condition:",
-                    np.mean(
-                        [abs(system.total_energy[0] - t) for t in system.total_energy]
-                    ),
-                )
-                print(
-                    "average abs squared energy difference since initial condition:",
-                    np.mean(
-                        [
-                            abs(system.total_energy[0] - t) ** 2
-                            for t in system.total_energy
-                        ]
-                    ),
-                )
+                # print("std:", np.std(system.total_energy))
+                # print(
+                #     "average abs energy difference since initial condition:",
+                #     np.mean(
+                #         [abs(system.total_energy[0] - t) for t in system.total_energy]
+                #     ),
+                # )
+                # print(
+                #     "average abs squared energy difference since initial condition:",
+                #     np.mean(
+                #         [
+                #             abs(system.total_energy[0] - t) ** 2
+                #             for t in system.total_energy
+                #         ]
+                #     ),
+                # )
                 solved_systems.append(system)
                 self.all_systems_total_energy.append(system.total_energy)
         self.systems = solved_systems
@@ -632,7 +632,7 @@ class ExperimentManager:
             "energy_thresholds",
             "lyapunov",
             "simulated_time_conv_scaled",
-            "mae_deviance",
+            # "mae_deviance",
             "notes",
         ]
         assert all(s.solved for s in self.systems)
@@ -666,16 +666,16 @@ class ExperimentManager:
         if not self.lyapunov:
             self.get_lyapunov()
 
-        reb_sim = System(
-            self.init_conditions,
-            self.simulation_length,
-            ReboundSolver,
-            1000.0 / self.conv.time_sf if self.conv else 1000.0,
-            1,
-            self.scaled,
-            self.conv,
-        )
-        reb_sim.solve()
+        # reb_sim = System(
+        #     self.init_conditions,
+        #     self.simulation_length,
+        #     ReboundSolver,
+        #     1000.0 / self.conv.time_sf if self.conv else 1000.0,
+        #     1,
+        #     self.scaled,
+        #     self.conv,
+        # )
+        # reb_sim.solve()
         for system in self.systems:
             experiment_data = [
                 next_experiment_id,
@@ -699,15 +699,15 @@ class ExperimentManager:
                 system.idx_energy_exceeded,
                 self.lyapunov,
                 system.simulation_length,
-                (
-                    self.calculate_trajectory_deviance_pair(
-                        "mae",
-                        [reb_sim.positions, system.positions],
-                        metric_score_only=True,
-                    )
-                    * system.conv.dist_sf
-                )
-                / len(system.objs),
+                # (
+                #     self.calculate_trajectory_deviance_pair(
+                #         "mae",
+                #         [reb_sim.positions, system.positions],
+                #         metric_score_only=True,
+                #     )
+                #     * system.conv.dist_sf
+                # )
+                # / len(system.objs),
                 self.experiment_note,
             ]
             with open(file_path, "a", newline="") as f:

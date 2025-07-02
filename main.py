@@ -74,24 +74,18 @@ def main():
     #     np.logspace(np.log10(MACHINE_EPS**0.2 * conv.time_sf), 6, num=10, dtype=float)
     #     / conv.time_sf
     # )
-    h = [3000 / conv.time_sf] * 2
+    h = [1e3 / conv.time_sf]
     experiment = ExperimentManager(
         masses,
         exp_time,
-        [VelocityVerletSolver, ReboundSolver],
+        [ReboundSolver],
         h,
         scaled=True,
         conv=conv,
     )
     print(np.logspace(3, 6, num=10, dtype=float))
     experiment.solve_all()
-    print(
-        experiment.calculate_trajectory_deviance_pair(
-            "mae", [s.positions for s in experiment.systems], metric_score_only=True
-        )
-        * experiment.conv.dist_sf
-        / 1000
-    )
+    
 
 
 if __name__ == "__main__":

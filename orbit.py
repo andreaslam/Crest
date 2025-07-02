@@ -218,60 +218,54 @@ def generate_random_orbits(n_masses, n_central_masses):
 MACHINE_EPS = 2**-52
 
 if __name__ == "__main__":
-    n_orbits_per_mass = 10
-    min_masses = 3
-    max_num_masses = 10
-    max_num_central_masses = 10
+    # -- seeds
+    random.seed(42)
+    np.random.seed(42)
+
+    n_orbits_per_combo = 500
+    min_bodies = 3
+    max_bodies = 5
+    max_central = 3
+
+    # total sim time (1 year)
     time = 60 * 60 * 24 * 365
+
+    # breakdown threshold for RK4
     breakdown_step_size = MACHINE_EPS**0.2
-    for num_masses in range(min_masses, max_num_masses + 1):
-        for m in range(n_orbits_per_mass):
-            for central_mass in range(1, min(m, max_num_central_masses + 1)):
-                masses = generate_random_orbits(num_masses, central_mass)
+
+    solvers = [VelocityVerletSolver, EulerSolver, RK4Solver]
+
+    for num_bodies in range(min_bodies, max_bodies + 1):
+        for central_masses in range(1, max_central + 1):
+            for _ in range(n_orbits_per_combo):
+                # 1) generate & normalize your system
+                masses = generate_random_orbits(num_bodies, central_masses)
                 conv = UnitConverter(masses)
                 masses = conv.convert_initial_conditions()
-                print("masses", masses)
-                print(conv)
-                solvers = [VelocityVerletSolver, EulerSolver, RK4Solver]
-                sim_solve = []
-                sim_step_sizes = []
-                smallest_step_size = (
-                    np.log10(
-                        breakdown_step_size * conv.time_sf
-                        if conv.time_sf
-                        else breakdown_step_size
-                    )
+
+                # 2) pick your step‑size grid
+                smallest_exp = np.log10(breakdown_step_size * conv.time_sf)
+                step_sizes = np.logspace(
+                    max(3, smallest_exp),
+                    np.log10(time) - 1,
+                    num=30,
                 )
-                print("smallest_step_size", smallest_step_size)
-                step_size = list(
-                    np.logspace(
-                        max(3, smallest_step_size),
-                        np.log10(time) - 1,
-                        num=40,
-                        dtype=float,
-                    )
-                )
-                print("step_size", step_size)
-                for so in solvers:
-                    for st in step_size:
-                        sim_solve.append(deepcopy(so))
-                        sim_step_sizes.append(deepcopy(st / conv.time_sf))
-                print("time", time / conv.time_sf)
-                print("sim_step_sizes", sim_step_sizes)
+                # scale into simulation units
+                h_values = [h / conv.time_sf for h in step_sizes]
+
+                # 3) build & run experiment
                 experiment = ExperimentManager(
                     masses,
                     time / conv.time_sf,
-                    sim_solve,
-                    h_values=sim_step_sizes,
+                    [deepcopy(s) for s in solvers] * len(h_values),
+                    h_values=h_values * len(solvers),
                     scaled=True,
                     conv=conv,
                 )
-                exp = experiment.get_lyapunov()
-                print("Lyapunov exponent:", exp)
+
+                # compute Lyapunov, solve, and export
+                lyap = experiment.get_lyapunov()
+                print(f"{num_bodies=}, {central_masses=}, Lyapunov:", lyap)
 
                 experiment.solve_all()
                 experiment.export_experiment()
-                print(
-                    *[(sys.idx_energy_exceeded, sys) for sys in experiment.systems],
-                    sep="\n",
-                )

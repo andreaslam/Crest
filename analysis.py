@@ -5,7 +5,6 @@ import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
-from scipy.stats import pearsonr
 
 from orbit import MACHINE_EPS
 
@@ -24,18 +23,27 @@ def load_and_preprocess_data(filepath):
     df["std_energy_loss"] = df["std_energy_loss"].astype(float)
     df["log_std_energy_loss"] = np.log10(df["std_energy_loss"])
 
-    df["mae_deviance"] = df["mae_deviance"].astype(float)
-    df["log_mae_deviance"] = np.log10(df["mae_deviance"])
+    # df["mae_deviance"] = df["mae_deviance"].astype(float)
+    # df["log_mae_deviance"] = np.log10(df["mae_deviance"])
 
     df = df[df["log_std_energy_loss"] > np.log10(MACHINE_EPS) + 1]
 
-    df = df[df["log_mae_deviance"] > np.log10(MACHINE_EPS) + 1]
+    # df = df[df["log_mae_deviance"] > np.log10(MACHINE_EPS) + 1]
 
     # df = df[df["lyapunov"] < 0.004]
     print(len(df))
     df.drop(columns="notes", inplace=True, errors="ignore")
     df = remove_outliers(df, "log_std_energy_loss")
+    
+    # lyapunov details
+    
+    unique_num_objects = df["num_objects"].unique()
+
     print(df["lyapunov"].describe())
+
+    for num_objects in unique_num_objects:
+        df_subset = df[df["num_objects"] == num_objects]
+        print(df_subset["lyapunov"].describe())
     return df
 
 
@@ -150,15 +158,15 @@ def computational_efficiency_analysis(df):
         for solver in df_subset["solver_type"].unique():
             solver_data = df_subset[df_subset["solver_type"] == solver]
             plt.scatter(
-                solver_data["execution_duration"],
                 solver_data["log_step_size"],
+                solver_data["execution_duration"],
                 label=solver,
             )
         plt.xscale("log")
         plt.yscale("log")
-        plt.xlabel("Execution Time (s)")
-        plt.ylabel("Log Step Size")
-        plt.title(f"Log Step Size vs Execution Time ({num_objects}-Body)")
+        plt.ylabel("Execution Time (s)")
+        plt.xlabel("Log Step Size")
+        plt.title(f"Execution Time vs Log Step Size for ({num_objects}-Body system)")
         plt.legend()
         plt.show()
         plt.close()
@@ -246,8 +254,9 @@ def regression_analysis_individual(df, metric):
     plt.show()
     plt.close()
 
-    # Plot KDE/Histogram of gradients per solver
+    # Plot KDE of gradients per solver with y-axis normalized to max=1
     plt.figure(figsize=(12, 6))
+
     for solver in df["solver_type"].unique():
         solver_data = df[df["solver_type"] == solver]
 
@@ -259,12 +268,16 @@ def regression_analysis_individual(df, metric):
             )
             gradients.append(model.params[1])
 
-        sns.histplot(gradients, kde=True, bins=1000, alpha=0.3)
+        # Plot only KDE curve
+        kde = sns.kdeplot(gradients, label=solver, fill=False, linewidth=2)
+
+        # Normalize the y-axis to max 1
 
     plt.xlabel("Gradient")
     plt.ylabel("Density")
-    plt.title("Distribution of Regression Gradients by Solver Type")
+    plt.title("KDE of Regression Gradients by Solver Type")
     plt.grid(True, alpha=0.3)
+    plt.legend()
     plt.tight_layout()
     plt.show()
     plt.close()
@@ -273,8 +286,8 @@ def regression_analysis_individual(df, metric):
 def main():
     df = load_and_preprocess_data("experiment_data/experiment.csv")
     regression_analysis_individual(df, "log_std_energy_loss")
-    # computational_efficiency_analysis(df)
-    compute_solver_scores(df)
+    computational_efficiency_analysis(df)
+    # compute_solver_scores(df)
 
 
 if __name__ == "__main__":
