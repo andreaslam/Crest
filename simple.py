@@ -92,30 +92,9 @@ if __name__ == "__main__":
         errors_rk4.append(rk4_error)
         errors_euler.append(euler_error)
 
-    plt.scatter(hs, errors_rk4, label="RK4")
-    plt.vlines(
-        3.16e-2,
-        ymin=min(errors_rk4 + errors_euler),
-        ymax=max(errors_rk4 + errors_euler),
-        color="red",
-        label="float64",
-    )
-    plt.vlines(
-        0.5 * (3.16e-2 + 1.38e-3),
-        ymin=min(errors_rk4 + errors_euler),
-        ymax=max(errors_rk4 + errors_euler),
-        color="green",
-        label="avg",
-    )
-    plt.vlines(
-        1.38e-3,
-        ymin=min(errors_rk4 + errors_euler),
-        ymax=max(errors_rk4 + errors_euler),
-        color="blue",
-        label="float32",
-    )
+    plt.scatter(hs, errors_rk4, label="RK4", marker="x", alpha=0.5)
 
-    plt.scatter(hs, errors_euler, label="Euler")
+    plt.scatter(hs, errors_euler, label="Euler", marker="x", alpha=0.5)
     plt.xscale("log")
     plt.yscale("log")
     plt.xlabel("Step Size (h)")

@@ -74,18 +74,17 @@ def main():
     #     np.logspace(np.log10(MACHINE_EPS**0.2 * conv.time_sf), 6, num=10, dtype=float)
     #     / conv.time_sf
     # )
-    h = [1e3 / conv.time_sf]
+    h = 1e3 / conv.time_sf
     experiment = ExperimentManager(
         masses,
         exp_time,
-        [ReboundSolver],
+        [RK4Solver],
         h,
         scaled=True,
         conv=conv,
     )
     print(np.logspace(3, 6, num=10, dtype=float))
     experiment.solve_all()
-    
 
 
 if __name__ == "__main__":

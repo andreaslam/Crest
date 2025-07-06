@@ -843,6 +843,61 @@ def animate_orbits_3d(manager: ExperimentManager):
     plt.close()
 
 
+def animate_orbit_3d_video(
+    manager: ExperimentManager, simulation_video_length_seconds=30, frame_skips=500
+):
+    frame_skips = min(1, frame_skips)
+    for system in manager.systems:
+        fig = plt.figure(figsize=(6, 6))
+        ax = fig.add_subplot(111, projection="3d")
+
+        lines = [
+            ax.plot([], [], [], label=f"Mass {obj.mass} kg")[0] for obj in system.objs
+        ]
+        points = [ax.plot([], [], [], "o")[0] for _ in system.objs]
+
+        ax.set_title(f"{type(system.solver).__name__} Simulation")
+        ax.set_xlabel("X Position (m)")
+        ax.set_ylabel("Y Position (m)")
+        ax.set_zlabel("Z Position (m)")
+        ax.set_xlim([-25, 25])
+        ax.set_ylim([-25, 25])
+        ax.set_zlim([-25, 25])
+        ax.legend()
+
+        def init():
+            for line, point in zip(lines, points):
+                line.set_data([], [])
+                line.set_3d_properties([])
+                point.set_data([], [])
+                point.set_3d_properties([])
+            return lines + points
+
+        def update(frame):
+            for i, (obj, line, point) in enumerate(zip(system.objs, lines, points)):
+                positions = np.array(system.positions[i])
+                if frame < len(positions):
+                    line.set_data(positions[:frame, 0], positions[:frame, 1])
+                    line.set_3d_properties(positions[:frame, 2])
+                    point.set_data(positions[frame, 0], positions[frame, 1])
+                    point.set_3d_properties(positions[frame, 2])
+            return lines + points
+
+        max_frames = system.total_num_positions()
+        ani = FuncAnimation(
+            fig,
+            update,
+            frames=range(0, max_frames, frame_skips),
+            init_func=init,
+            interval=1,
+            blit=True,
+        )
+        ani.save(
+            f"{type(system.solver).__name__}_simulation.mp4",
+            fps=((system.num_steps // frame_skips) / simulation_video_length_seconds),
+        )
+
+
 if __name__ == "__main__":
     from lyapunov import LyapunovCalculator, modify_init_conditions
 
